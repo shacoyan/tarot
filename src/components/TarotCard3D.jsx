@@ -18,12 +18,11 @@ export default function TarotCard3D({
   frontTexture,
   backTexture,
   opacity = 1,
-  onSwipe,
-  awaitingSwipe = false,
+  scale = 1,
+  isFocused = false,
 }) {
   const groupRef = useRef();
   const flipRef = useRef();
-  const swipeStartY = useRef(0);
   const [hovered, setHovered] = useState(false);
 
   // X軸フリップの目標角度
@@ -35,7 +34,9 @@ export default function TarotCard3D({
     px: position[0],
     py: position[1],
     pz: position[2],
-    rz: rotation[2],
+    ry: rotation[1] || 0,
+    rz: rotation[2] || 0,
+    sc: scale,
     hoverY: 0,
     flipAngle: 0,
   });
@@ -53,11 +54,11 @@ export default function TarotCard3D({
     if (isSelected) {
       targetX = 0;
       targetY = 0;
-      targetZ = 2;
+      targetZ = 3;
     }
 
-    // ホバー浮遊
-    const targetHoverY = hovered && !isSelected ? 0.3 : 0;
+    // ホバー浮遊（フォーカスカードのみ）
+    const targetHoverY = hovered && isFocused && !isSelected ? 0.2 : 0;
     state.hoverY += (targetHoverY - state.hoverY) * speed;
 
     // position lerp
@@ -65,19 +66,27 @@ export default function TarotCard3D({
     state.py += (targetY + state.hoverY - state.py) * speed;
     state.pz += (targetZ - state.pz) * speed;
 
+    // scale lerp
+    const targetScale = isSelected ? 1.0 : scale;
+    state.sc += (targetScale - state.sc) * speed;
+
     // X軸フリップ角度 lerp
     const targetFlip = isFlipped ? flipTarget : 0;
     state.flipAngle += (targetFlip - state.flipAngle) * speed;
 
-    // Z回転: 正位置はフリップ後にZ-PI補正（X軸フリップの上下反転を戻す）
-    // 逆位置はそのまま（上下反転=逆位置表示）
+    // Y回転 lerp（カルーセルの内向き回転）
+    const targetRY = isSelected ? 0 : (rotation[1] || 0);
+    state.ry += (targetRY - state.ry) * speed;
+
+    // Z回転: 正位置はフリップ後にZ-PI補正
     const targetRZ = isFlipped && !isReversed
-      ? rotation[2] + Math.PI
-      : rotation[2];
+      ? (rotation[2] || 0) + Math.PI
+      : (rotation[2] || 0);
     state.rz += (targetRZ - state.rz) * speed;
 
     groupRef.current.position.set(state.px, state.py, state.pz);
-    groupRef.current.rotation.set(0, 0, state.rz);
+    groupRef.current.rotation.set(0, state.ry, state.rz);
+    groupRef.current.scale.setScalar(state.sc);
     flipRef.current.rotation.set(state.flipAngle, 0, 0);
   });
 
@@ -85,7 +94,7 @@ export default function TarotCard3D({
     if (disabled) return;
     e.stopPropagation();
     setHovered(true);
-    document.body.style.cursor = awaitingSwipe ? 'grab' : 'pointer';
+    document.body.style.cursor = 'pointer';
   };
 
   const handlePointerOut = () => {
@@ -94,21 +103,9 @@ export default function TarotCard3D({
   };
 
   const handleClick = (e) => {
-    if (disabled || awaitingSwipe) return;
+    if (disabled) return;
     e.stopPropagation();
     onClick?.();
-  };
-
-  const handleSwipeStart = (e) => {
-    e.stopPropagation();
-    swipeStartY.current = e.clientY;
-  };
-
-  const handleSwipeEnd = (e) => {
-    e.stopPropagation();
-    const diff = e.clientY - swipeStartY.current;
-    if (diff < -30 && onSwipe) onSwipe('top');
-    if (diff > 30 && onSwipe) onSwipe('bottom');
   };
 
   const isTransparent = opacity < 1;
@@ -121,8 +118,6 @@ export default function TarotCard3D({
           onPointerOver={handlePointerOver}
           onPointerOut={handlePointerOut}
           onClick={handleClick}
-          onPointerDown={awaitingSwipe ? handleSwipeStart : undefined}
-          onPointerUp={awaitingSwipe ? handleSwipeEnd : undefined}
         >
           <boxGeometry args={[cardWidth + 0.5, cardHeight + 0.5, 0.15]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />

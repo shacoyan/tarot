@@ -45,6 +45,7 @@ export default function App() {
 
   // ── 捲り方向の選択 ────────────────────────────────────────────────
   const handleChooseDirection = useCallback((direction) => {
+    if (flipState !== 'selected') return;
     setFlipDirection(direction);
     setFlipState('flipping');
 
@@ -95,7 +96,7 @@ export default function App() {
   // ── ステップラベル ───────────────────────────────────────────────
   const stepLabel =
     flipState === 'idle' && !isShuffling && currentStep < 3
-      ? `${positionLabels[currentStep]}のカードを選んでください`
+      ? `← スワイプでカードを選び、タップで決定 →`
       : isShuffling
         ? 'シャッフル中...'
         : '';
@@ -144,7 +145,7 @@ export default function App() {
       {/* ── スワイプヒント overlay ── */}
       {flipState === 'selected' && (
         <div className="swipe-hint-overlay">
-          <p className="swipe-hint-text">↕ 上下にスワイプしてカードを捲ってください</p>
+          <p className="swipe-hint-text">↕ 上下にスワイプでカードを捲る</p>
         </div>
       )}
 

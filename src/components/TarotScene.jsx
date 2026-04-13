@@ -5,7 +5,7 @@ export default function TarotScene({ children }) {
   return (
     <Canvas
       camera={{ position: [0, 0, 8], fov: 50 }}
-      style={{ width: '100%', height: '100vh' }}
+      style={{ width: '100%', height: '100vh', touchAction: 'none' }}
     >
       <fog attach="fog" args={['#0a0a1a', 8, 20]} />
 

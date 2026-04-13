@@ -1,8 +1,33 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import TarotCard3D from './TarotCard3D';
 import { FlipParticles } from './Particles';
 import { createCardBackTexture } from '../textures/cardBack';
+
+// ── カード配置計算 ──────────────────────────────────────────────
+function getCardLayout(index, focusIndex) {
+  const spacing = 2.0;
+  const x = (index - focusIndex) * spacing;
+
+  if (index === focusIndex) {
+    return {
+      position: [x, 0, 1.5],
+      rotation: [0, 0, 0],
+      scale: 1.0,
+    };
+  }
+
+  const direction = index > focusIndex ? -1 : 1;
+  const distance = Math.abs(index - focusIndex);
+  const ry = direction * 0.15 * Math.min(distance, 3);
+
+  return {
+    position: [x, -0.2, 0],
+    rotation: [0, ry, 0],
+    scale: 0.75,
+  };
+}
 
 export default function CardSpread3D({
   cards,
@@ -14,6 +39,9 @@ export default function CardSpread3D({
   onSwipe,
   isShuffling,
 }) {
+  // ── フォーカスインデックス ─────────────────────────────────────────
+  const [focusIndex, setFocusIndex] = useState(3);
+
   // ── シャッフルフェーズ管理 ─────────────────────────────────────────
   const [shufflePhase, setShufflePhase] = useState('idle');
 
@@ -44,25 +72,80 @@ export default function CardSpread3D({
     });
   }, [cards]);
 
-  // ── カードクリックハンドラ ────────────────────────────────────────
-  const handleCardClick = useCallback(
-    (index) => {
-      if (selectedCards.includes(index)) return;
-      if (isShuffling) return;
-      onSelectCard(index);
-    },
-    [selectedCards, onSelectCard, isShuffling]
-  );
+  // ── 横スクロール処理 ──────────────────────────────────────────────
+  const handleScroll = useCallback((delta) => {
+    if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
+
+    setFocusIndex((prev) => {
+      let next = prev;
+      const limit = cards.length - 1;
+
+      // deltaの方向に未選択カードを探す
+      do {
+        next += delta;
+      } while (
+        next >= 0 &&
+        next <= limit &&
+        selectedCards.includes(next)
+      );
+
+      if (next < 0 || next > limit) return prev;
+      return next;
+    });
+  }, [flipState, isShuffling, shufflePhase, cards.length, selectedCards]);
+
+  // ── 中央カードクリック ────────────────────────────────────────────
+  const handleCardClick = useCallback((index) => {
+    if (index !== focusIndex) return;
+    if (selectedCards.includes(index)) return;
+    if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
+    onSelectCard(index);
+  }, [focusIndex, selectedCards, flipState, isShuffling, shufflePhase, onSelectCard]);
+
+  // ── ジェスチャー処理（横スクロール / 縦スワイプ判定）─────────────
+  const { gl } = useThree();
+
+  useEffect(() => {
+    const dom = gl.domElement;
+    let startX = 0;
+    let startY = 0;
+
+    const onDown = (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startY = e.clientY;
+    };
+
+    const onUp = (e) => {
+      e.preventDefault();
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      if (absDx > absDy && absDx > 40) {
+        // 横スワイプ → スクロール
+        handleScroll(dx < 0 ? 1 : -1);
+      } else if (absDy > absDx && absDy > 30) {
+        // 縦スワイプ → めくり（onSwipeに委譲）
+        if (onSwipe) {
+          onSwipe(dy < 0 ? 'top' : 'bottom');
+        }
+      }
+    };
+
+    dom.addEventListener('pointerdown', onDown, { passive: false });
+    dom.addEventListener('pointerup', onUp, { passive: false });
+
+    return () => {
+      dom.removeEventListener('pointerdown', onDown);
+      dom.removeEventListener('pointerup', onUp);
+    };
+  }, [gl, handleScroll, onSwipe]);
 
   return (
     <group>
       {cards.map((card, i) => {
-        const angle = (i - 3) * 0.2;
-        const baseX = Math.sin(angle) * 3;
-        const baseY = Math.cos(angle) * 0.5 - 1;
-        const baseZ = 0;
-        const rotZ = -(i - 3) * 0.15;
-
         const isSelected = selectedCards.includes(i);
         const isCurrentlySelecting =
           isSelected &&
@@ -71,21 +154,24 @@ export default function CardSpread3D({
 
         const isConfirmed = isSelected && !isCurrentlySelecting;
 
-        // カード選択中かつフリップ中/済みの場合のみフリップ
         const isFlipped = isCurrentlySelecting &&
           (flipState === 'flipping' || flipState === 'flipped');
 
-        // シャッフル中の位置オーバーライド
+        // レイアウト計算
+        const layout = getCardLayout(i, focusIndex);
+
+        // シャッフル中は集まるアニメーション
         let position, rotation;
         if (shufflePhase === 'gather' && !isSelected) {
           position = [0, -0.5, 0.3];
           rotation = [0, 0, 0];
         } else {
-          position = [baseX, baseY, baseZ];
-          rotation = [0, 0, rotZ];
+          position = layout.position;
+          rotation = layout.rotation;
         }
 
         const opacity = isConfirmed ? 0 : 1;
+        const isFocused = i === focusIndex && !isSelected;
 
         return (
           <group key={card.id}>
@@ -93,6 +179,7 @@ export default function CardSpread3D({
               card={card}
               position={position}
               rotation={rotation}
+              scale={layout.scale}
               isSelected={isCurrentlySelecting}
               isFlipped={isFlipped}
               isReversed={card.hiddenOrientation === 'flipped'}
@@ -102,8 +189,7 @@ export default function CardSpread3D({
               frontTexture={frontTextures[i]}
               backTexture={backTexture}
               opacity={opacity}
-              onSwipe={isCurrentlySelecting ? onSwipe : undefined}
-              awaitingSwipe={isCurrentlySelecting && flipState === 'selected'}
+              isFocused={isFocused}
             />
 
             <FlipParticles
