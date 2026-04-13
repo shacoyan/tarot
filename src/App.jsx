@@ -7,8 +7,9 @@ import allCards from './data/cards';
 
 const positionLabels = ['過去', '現在', '未来'];
 
-function pickRandomCards(count) {
-  const shuffled = [...allCards].sort(() => Math.random() - 0.5);
+function pickRandomCards(count, excludeIds = []) {
+  const available = allCards.filter((c) => !excludeIds.includes(c.id));
+  const shuffled = [...available].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count).map((card) => ({
     ...card,
     hiddenOrientation: Math.random() < 0.5 ? 'normal' : 'flipped',
@@ -19,12 +20,13 @@ export default function App() {
   const [phase, setPhase] = useState('select');
   const [currentStep, setCurrentStep] = useState(0);
   const [drawnCardsKey, setDrawnCardsKey] = useState(0);
-  const [candidates, setCandidates] = useState(() => pickRandomCards(7));
+  const [candidates, setCandidates] = useState(() => pickRandomCards(22));
   const [selectedCards, setSelectedCards] = useState([]);
   const [selectedResults, setSelectedResults] = useState([]);
 
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [isShuffling, setIsShuffling] = useState(false);
+  const [usedCardIds, setUsedCardIds] = useState([]);
 
   // ── フリップ状態管理 ──────────────────────────────────────────────
   // 'idle' → 'selected' → 'flipping' → 'flipped' → 'idle'
@@ -81,7 +83,12 @@ export default function App() {
   // ── リセット ────────────────────────────────────────────────────
   const handleReset = useCallback(() => {
     if (flipTimer.current) clearTimeout(flipTimer.current);
-    setCandidates(pickRandomCards(7));
+
+    const newUsedIds = [...usedCardIds, ...selectedResults.map((r) => r.card.id)];
+    const finalUsedIds = (allCards.length - newUsedIds.length) < 3 ? [] : newUsedIds;
+
+    setUsedCardIds(finalUsedIds);
+    setCandidates(pickRandomCards(22, finalUsedIds));
     setSelectedCards([]);
     setSelectedResults([]);
     setCurrentStep(0);
@@ -91,7 +98,7 @@ export default function App() {
     setIsShuffling(false);
     setPhase('select');
     setDrawnCardsKey((k) => k + 1);
-  }, []);
+  }, [usedCardIds, selectedResults]);
 
   // ── ステップラベル ───────────────────────────────────────────────
   const stepLabel =

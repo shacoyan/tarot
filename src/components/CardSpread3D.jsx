@@ -6,11 +6,14 @@ import { FlipParticles } from './Particles';
 import { createCardBackTexture } from '../textures/cardBack';
 
 // ── カード配置計算 ──────────────────────────────────────────────
-function getCardLayout(index, focusIndex) {
+function getCardLayout(index, focusIndex, totalCards) {
   const spacing = 2.0;
-  const x = (index - focusIndex) * spacing;
+  let offset = index - focusIndex;
+  if (offset > totalCards / 2) offset -= totalCards;
+  if (offset < -totalCards / 2) offset += totalCards;
+  const x = offset * spacing;
 
-  if (index === focusIndex) {
+  if (offset === 0) {
     return {
       position: [x, 0, 1.5],
       rotation: [0, 0, 0],
@@ -18,8 +21,8 @@ function getCardLayout(index, focusIndex) {
     };
   }
 
-  const direction = index > focusIndex ? -1 : 1;
-  const distance = Math.abs(index - focusIndex);
+  const direction = offset > 0 ? -1 : 1;
+  const distance = Math.abs(offset);
   const ry = direction * 0.15 * Math.min(distance, 3);
 
   return {
@@ -40,7 +43,7 @@ export default function CardSpread3D({
   isShuffling,
 }) {
   // ── フォーカスインデックス ─────────────────────────────────────────
-  const [focusIndex, setFocusIndex] = useState(3);
+  const [focusIndex, setFocusIndex] = useState(11);
 
   // ── シャッフルフェーズ管理 ─────────────────────────────────────────
   const [shufflePhase, setShufflePhase] = useState('idle');
@@ -77,30 +80,23 @@ export default function CardSpread3D({
     if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
 
     setFocusIndex((prev) => {
+      const N = cards.length;
       let next = prev;
-      const limit = cards.length - 1;
-
-      // deltaの方向に未選択カードを探す
-      do {
-        next += delta;
-      } while (
-        next >= 0 &&
-        next <= limit &&
-        selectedCards.includes(next)
-      );
-
-      if (next < 0 || next > limit) return prev;
-      return next;
+      for (let i = 0; i < N; i++) {
+        next = ((next + delta) % N + N) % N;
+        if (!selectedCards.includes(next)) return next;
+      }
+      return prev;
     });
   }, [flipState, isShuffling, shufflePhase, cards.length, selectedCards]);
 
   // ── 中央カードクリック ────────────────────────────────────────────
   const handleCardClick = useCallback((index) => {
-    if (index !== focusIndex) return;
     if (selectedCards.includes(index)) return;
     if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
+    setFocusIndex(index);
     onSelectCard(index);
-  }, [focusIndex, selectedCards, flipState, isShuffling, shufflePhase, onSelectCard]);
+  }, [selectedCards, flipState, isShuffling, shufflePhase, onSelectCard]);
 
   // ── ジェスチャー処理（横スクロール / 縦スワイプ判定）─────────────
   const { gl } = useThree();
@@ -146,6 +142,13 @@ export default function CardSpread3D({
   return (
     <group>
       {cards.map((card, i) => {
+        // リング距離チェック — 表示範囲外はスキップ
+        const N = cards.length;
+        let ringOffset = i - focusIndex;
+        if (ringOffset > N / 2) ringOffset -= N;
+        if (ringOffset < -N / 2) ringOffset += N;
+        if (Math.abs(ringOffset) > 5) return null;
+
         const isSelected = selectedCards.includes(i);
         const isCurrentlySelecting =
           isSelected &&
@@ -158,7 +161,7 @@ export default function CardSpread3D({
           (flipState === 'flipping' || flipState === 'flipped');
 
         // レイアウト計算
-        const layout = getCardLayout(i, focusIndex);
+        const layout = getCardLayout(i, focusIndex, cards.length);
 
         // シャッフル中は集まるアニメーション
         let position, rotation;
