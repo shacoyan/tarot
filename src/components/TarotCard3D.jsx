@@ -1,35 +1,9 @@
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 
 const cardWidth = 2.0;
 const cardHeight = 2.9;
-const cardRadius = 0.15;
-
-// 角丸矩形のShapeGeometryを生成（UV座標を0-1に正規化）
-function createRoundedRectGeometry(w, h, r) {
-  const shape = new THREE.Shape();
-  const x = -w / 2, y = -h / 2;
-  shape.moveTo(x + r, y);
-  shape.lineTo(x + w - r, y);
-  shape.quadraticCurveTo(x + w, y, x + w, y + r);
-  shape.lineTo(x + w, y + h - r);
-  shape.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  shape.lineTo(x + r, y + h);
-  shape.quadraticCurveTo(x, y + h, x, y + h - r);
-  shape.lineTo(x, y + r);
-  shape.quadraticCurveTo(x, y, x + r, y);
-
-  const geom = new THREE.ShapeGeometry(shape);
-  // UV座標を [0,1] に正規化（テクスチャが正しくマッピングされるように）
-  const uvAttr = geom.attributes.uv;
-  for (let i = 0; i < uvAttr.count; i++) {
-    uvAttr.setXY(i, (uvAttr.getX(i) + w / 2) / w, (uvAttr.getY(i) + h / 2) / h);
-  }
-  uvAttr.needsUpdate = true;
-  return geom;
-}
 
 export default function TarotCard3D({
   card,
@@ -136,12 +110,6 @@ export default function TarotCard3D({
 
   const isTransparent = opacity < 1;
 
-  // 角丸ジオメトリ（メモ化）
-  const roundedGeom = useMemo(
-    () => createRoundedRectGeometry(cardWidth, cardHeight, cardRadius),
-    []
-  );
-
   return (
     <group ref={groupRef}>
       <group ref={flipRef}>
@@ -155,17 +123,19 @@ export default function TarotCard3D({
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
 
-        {/* カード本体（角丸の薄い板）— 側面は金色 */}
-        <RoundedBox args={[cardWidth, cardHeight, 0.02]} radius={cardRadius} smoothness={4}>
+        {/* カード本体（薄い板）— 側面は金色 */}
+        <mesh>
+          <boxGeometry args={[cardWidth, cardHeight, 0.02]} />
           <meshStandardMaterial
             color="#c9a84c"
             transparent={isTransparent}
             opacity={opacity}
           />
-        </RoundedBox>
+        </mesh>
 
         {/* 裏面（+Z方向 = カメラ側、初期状態でカメラに見える） */}
-        <mesh position={[0, 0, 0.011]} geometry={roundedGeom}>
+        <mesh position={[0, 0, 0.011]}>
+          <planeGeometry args={[cardWidth, cardHeight]} />
           <meshStandardMaterial
             map={backTexture ?? null}
             color={backTexture ? undefined : '#1a1040'}
@@ -176,7 +146,8 @@ export default function TarotCard3D({
         </mesh>
 
         {/* 表面（-Z方向、フリップ後にカメラ側に向く） */}
-        <mesh position={[0, 0, -0.011]} rotation={[0, Math.PI, 0]} geometry={roundedGeom}>
+        <mesh position={[0, 0, -0.011]} rotation={[0, Math.PI, 0]}>
+          <planeGeometry args={[cardWidth, cardHeight]} />
           <meshStandardMaterial
             map={frontTexture ?? null}
             color={frontTexture ? undefined : '#2a1a60'}
