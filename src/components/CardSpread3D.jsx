@@ -6,9 +6,9 @@ import { FlipParticles } from './Particles';
 import { createCardBackTexture } from '../textures/cardBack';
 
 // ── 物理定数 ────────────────────────────────────────────────────
-const FRICTION = 0.93;
-const MIN_VELOCITY = 0.002;
-const SWIPE_SCALE = 0.018; // px/ms → cards/frame 変換係数
+const FRICTION = 0.96;
+const MIN_VELOCITY = 0.003;
+const SWIPE_SCALE = 0.035; // px/ms → cards/frame 変換係数
 
 // ── カード配置計算（連続float対応）──────────────────────────────
 function getCardLayout(index, scrollPos, totalCards) {
