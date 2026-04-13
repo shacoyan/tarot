@@ -45,6 +45,13 @@ export default function App() {
     setFlipState('selected');
   }, [selectedCards, flipState, isShuffling]);
 
+  // ── カード選択解除（カード外タップ） ────────────────────────────────
+  const handleDeselectCard = useCallback(() => {
+    if (flipState !== 'selected') return;
+    setSelectedCards((prev) => prev.slice(0, -1));
+    setFlipState('idle');
+  }, [flipState]);
+
   // ── 捲り方向の選択 ────────────────────────────────────────────────
   const handleChooseDirection = useCallback((direction) => {
     if (flipState !== 'selected') return;
@@ -120,6 +127,7 @@ export default function App() {
           flipDirection={flipDirection}
           onSelectCard={handleSelectCard}
           onSwipe={handleChooseDirection}
+          onDeselect={handleDeselectCard}
           isShuffling={isShuffling}
         />
       </TarotScene>

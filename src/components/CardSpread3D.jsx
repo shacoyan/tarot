@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import TarotCard3D from './TarotCard3D';
@@ -40,10 +40,12 @@ export default function CardSpread3D({
   flipDirection,
   onSelectCard,
   onSwipe,
+  onDeselect,
   isShuffling,
 }) {
   // ── フォーカスインデックス ─────────────────────────────────────────
   const [focusIndex, setFocusIndex] = useState(11);
+  const cardClickedRef = useRef(false);
 
   // ── シャッフルフェーズ管理 ─────────────────────────────────────────
   const [shufflePhase, setShufflePhase] = useState('idle');
@@ -92,6 +94,7 @@ export default function CardSpread3D({
 
   // ── 中央カードクリック ────────────────────────────────────────────
   const handleCardClick = useCallback((index) => {
+    cardClickedRef.current = true;
     if (selectedCards.includes(index)) return;
     if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
     setFocusIndex(index);
@@ -127,7 +130,13 @@ export default function CardSpread3D({
         if (onSwipe) {
           onSwipe(dy < 0 ? 'top' : 'bottom');
         }
+      } else if (absDx < 10 && absDy < 10) {
+        // タップ — カード外なら選択解除
+        if (!cardClickedRef.current && onDeselect) {
+          onDeselect();
+        }
       }
+      cardClickedRef.current = false;
     };
 
     dom.addEventListener('pointerdown', onDown, { passive: false });
@@ -137,7 +146,7 @@ export default function CardSpread3D({
       dom.removeEventListener('pointerdown', onDown);
       dom.removeEventListener('pointerup', onUp);
     };
-  }, [gl, handleScroll, onSwipe]);
+  }, [gl, handleScroll, onSwipe, onDeselect]);
 
   return (
     <group>
