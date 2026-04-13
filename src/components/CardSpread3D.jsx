@@ -101,6 +101,26 @@ export default function CardSpread3D({
     onSelectCard(index);
   }, [selectedCards, flipState, isShuffling, shufflePhase, onSelectCard]);
 
+  // ── 慣性スクロール ──────────────────────────────────────────────
+  const inertiaTimers = useRef([]);
+
+  const scrollWithInertia = useCallback((direction, velocity) => {
+    // 既存の慣性タイマーをキャンセル
+    inertiaTimers.current.forEach(clearTimeout);
+    inertiaTimers.current = [];
+
+    // 速度に応じてスクロール枚数を決定（1〜6枚）
+    const count = Math.min(Math.max(1, Math.floor(velocity * 4)), 6);
+
+    // 1枚目は即座に、以降は減速しながら送る
+    handleScroll(direction);
+    for (let i = 1; i < count; i++) {
+      const delay = i * 100 + i * i * 20; // 加速度的に遅くなる
+      const t = setTimeout(() => handleScroll(direction), delay);
+      inertiaTimers.current.push(t);
+    }
+  }, [handleScroll]);
+
   // ── ジェスチャー処理（横スクロール / 縦スワイプ判定）─────────────
   const { gl } = useThree();
 
@@ -108,11 +128,13 @@ export default function CardSpread3D({
     const dom = gl.domElement;
     let startX = 0;
     let startY = 0;
+    let startTime = 0;
 
     const onDown = (e) => {
       e.preventDefault();
       startX = e.clientX;
       startY = e.clientY;
+      startTime = Date.now();
     };
 
     const onUp = (e) => {
@@ -123,8 +145,10 @@ export default function CardSpread3D({
       const absDy = Math.abs(dy);
 
       if (absDx > absDy && absDx > 40) {
-        // 横スワイプ → スクロール
-        handleScroll(dx < 0 ? 1 : -1);
+        // 横スワイプ → 慣性スクロール
+        const elapsed = Math.max(Date.now() - startTime, 1);
+        const velocity = absDx / elapsed; // px/ms
+        scrollWithInertia(dx < 0 ? 1 : -1, velocity);
       } else if (absDy > absDx && absDy > 30) {
         // 縦スワイプ → めくり（onSwipeに委譲）
         if (onSwipe) {
@@ -145,8 +169,9 @@ export default function CardSpread3D({
     return () => {
       dom.removeEventListener('pointerdown', onDown);
       dom.removeEventListener('pointerup', onUp);
+      inertiaTimers.current.forEach(clearTimeout);
     };
-  }, [gl, handleScroll, onSwipe, onDeselect]);
+  }, [gl, scrollWithInertia, onSwipe, onDeselect]);
 
   return (
     <group>
