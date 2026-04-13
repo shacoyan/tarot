@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-const cardWidth = 1.8;
-const cardHeight = 2.6;
+const cardWidth = 2.2;
+const cardHeight = 3.2;
 
 export default function TarotCard3D({
   card,
