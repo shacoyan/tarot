@@ -44,7 +44,7 @@ export default function TarotCard3D({
   useFrame(() => {
     if (!groupRef.current || !flipRef.current) return;
     const state = animRef.current;
-    const speed = 0.08;
+    const speed = 0.14;
 
     // 目標position
     let targetX = position[0];
