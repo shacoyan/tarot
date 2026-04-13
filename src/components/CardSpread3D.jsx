@@ -1,34 +1,37 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import TarotCard3D from './TarotCard3D';
 import { FlipParticles } from './Particles';
 import { createCardBackTexture } from '../textures/cardBack';
 
-// ── カード配置計算 ──────────────────────────────────────────────
-function getCardLayout(index, focusIndex, totalCards) {
+// ── 物理定数 ────────────────────────────────────────────────────
+const FRICTION = 0.93;
+const MIN_VELOCITY = 0.002;
+const SWIPE_SCALE = 0.018; // px/ms → cards/frame 変換係数
+
+// ── カード配置計算（連続float対応）──────────────────────────────
+function getCardLayout(index, scrollPos, totalCards) {
   const spacing = 2.0;
-  let offset = index - focusIndex;
+  let offset = index - scrollPos;
   if (offset > totalCards / 2) offset -= totalCards;
   if (offset < -totalCards / 2) offset += totalCards;
   const x = offset * spacing;
 
-  if (offset === 0) {
-    return {
-      position: [x, 0, 1.5],
-      rotation: [0, 0, 0],
-      scale: 1.0,
-    };
-  }
+  const absOffset = Math.abs(offset);
+  // 中央に近いほど大きく手前に（連続的に補間）
+  const t = Math.max(0, 1 - absOffset); // 1 at center, 0 at ±1+
+  const z = t * 1.5;
+  const y = (1 - t) * -0.2;
+  const scale = 0.75 + t * 0.25;
 
   const direction = offset > 0 ? -1 : 1;
-  const distance = Math.abs(offset);
-  const ry = direction * 0.15 * Math.min(distance, 3);
+  const ry = absOffset < 0.01 ? 0 : direction * 0.15 * Math.min(absOffset, 3);
 
   return {
-    position: [x, -0.2, 0],
+    position: [x, y, z],
     rotation: [0, ry, 0],
-    scale: 0.75,
+    scale,
   };
 }
 
@@ -43,8 +46,10 @@ export default function CardSpread3D({
   onDeselect,
   isShuffling,
 }) {
-  // ── フォーカスインデックス ─────────────────────────────────────────
-  const [focusIndex, setFocusIndex] = useState(11);
+  // ── 連続スクロール位置（float）───────────────────────────────────
+  const scrollPosRef = useRef(11);
+  const scrollVelRef = useRef(0);
+  const [scrollPos, setScrollPos] = useState(11);
   const cardClickedRef = useRef(false);
 
   // ── シャッフルフェーズ管理 ─────────────────────────────────────────
@@ -77,51 +82,45 @@ export default function CardSpread3D({
     });
   }, [cards]);
 
-  // ── 横スクロール処理 ──────────────────────────────────────────────
-  const handleScroll = useCallback((delta) => {
-    if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
+  // ── 物理演算（useFrame内で毎フレーム更新）──────────────────────
+  useFrame(() => {
+    const vel = scrollVelRef.current;
+    if (Math.abs(vel) < MIN_VELOCITY) {
+      scrollVelRef.current = 0;
+      return;
+    }
 
-    setFocusIndex((prev) => {
-      const N = cards.length;
-      let next = prev;
-      for (let i = 0; i < N; i++) {
-        next = ((next + delta) % N + N) % N;
-        if (!selectedCards.includes(next)) return next;
-      }
-      return prev;
-    });
-  }, [flipState, isShuffling, shufflePhase, cards.length, selectedCards]);
+    scrollPosRef.current += vel;
+    scrollVelRef.current *= FRICTION;
 
-  // ── 中央カードクリック ────────────────────────────────────────────
+    // ラップアラウンド（0〜N）
+    const N = cards.length;
+    scrollPosRef.current = ((scrollPosRef.current % N) + N) % N;
+
+    // React再レンダーをトリガー（カード位置更新用）
+    setScrollPos(scrollPosRef.current);
+  });
+
+  // ── スワイプ開始時に慣性を止める ──────────────────────────────────
+  const stopInertia = useCallback(() => {
+    scrollVelRef.current = 0;
+  }, []);
+
+  // ── カードクリック → 選択 & スクロールスナップ ────────────────────
   const handleCardClick = useCallback((index) => {
     cardClickedRef.current = true;
     if (selectedCards.includes(index)) return;
     if (flipState !== 'idle' || isShuffling || shufflePhase !== 'idle') return;
-    setFocusIndex(index);
+
+    // スクロール位置をカードにスナップ
+    scrollPosRef.current = index;
+    scrollVelRef.current = 0;
+    setScrollPos(index);
+
     onSelectCard(index);
   }, [selectedCards, flipState, isShuffling, shufflePhase, onSelectCard]);
 
-  // ── 慣性スクロール ──────────────────────────────────────────────
-  const inertiaTimers = useRef([]);
-
-  const scrollWithInertia = useCallback((direction, velocity) => {
-    // 既存の慣性タイマーをキャンセル
-    inertiaTimers.current.forEach(clearTimeout);
-    inertiaTimers.current = [];
-
-    // 速度に応じてスクロール枚数を決定（1〜6枚）
-    const count = Math.min(Math.max(1, Math.floor(velocity * 4)), 6);
-
-    // 1枚目は即座に、以降は減速しながら送る
-    handleScroll(direction);
-    for (let i = 1; i < count; i++) {
-      const delay = i * 100 + i * i * 20; // 加速度的に遅くなる
-      const t = setTimeout(() => handleScroll(direction), delay);
-      inertiaTimers.current.push(t);
-    }
-  }, [handleScroll]);
-
-  // ── ジェスチャー処理（横スクロール / 縦スワイプ判定）─────────────
+  // ── ジェスチャー処理 ──────────────────────────────────────────────
   const { gl } = useThree();
 
   useEffect(() => {
@@ -135,6 +134,8 @@ export default function CardSpread3D({
       startX = e.clientX;
       startY = e.clientY;
       startTime = Date.now();
+      // タッチした瞬間に慣性を止める
+      stopInertia();
     };
 
     const onUp = (e) => {
@@ -145,12 +146,14 @@ export default function CardSpread3D({
       const absDy = Math.abs(dy);
 
       if (absDx > absDy && absDx > 40) {
-        // 横スワイプ → 慣性スクロール
-        const elapsed = Math.max(Date.now() - startTime, 1);
-        const velocity = absDx / elapsed; // px/ms
-        scrollWithInertia(dx < 0 ? 1 : -1, velocity);
+        // 横スワイプ → 慣性スクロール開始
+        if (flipState === 'idle' && !isShuffling && shufflePhase === 'idle') {
+          const elapsed = Math.max(Date.now() - startTime, 1);
+          const velocity = (dx / elapsed) * SWIPE_SCALE;
+          scrollVelRef.current = -velocity; // 指の方向と逆
+        }
       } else if (absDy > absDx && absDy > 30) {
-        // 縦スワイプ → めくり（onSwipeに委譲）
+        // 縦スワイプ → めくり
         if (onSwipe) {
           onSwipe(dy < 0 ? 'top' : 'bottom');
         }
@@ -169,16 +172,18 @@ export default function CardSpread3D({
     return () => {
       dom.removeEventListener('pointerdown', onDown);
       dom.removeEventListener('pointerup', onUp);
-      inertiaTimers.current.forEach(clearTimeout);
     };
-  }, [gl, scrollWithInertia, onSwipe, onDeselect]);
+  }, [gl, stopInertia, flipState, isShuffling, shufflePhase, onSwipe, onDeselect]);
+
+  // ── 最寄りのカードインデックス ────────────────────────────────────
+  const N = cards.length;
+  const nearestIndex = ((Math.round(scrollPos) % N) + N) % N;
 
   return (
     <group>
       {cards.map((card, i) => {
         // リング距離チェック — 表示範囲外はスキップ
-        const N = cards.length;
-        let ringOffset = i - focusIndex;
+        let ringOffset = i - scrollPos;
         if (ringOffset > N / 2) ringOffset -= N;
         if (ringOffset < -N / 2) ringOffset += N;
         if (Math.abs(ringOffset) > 5) return null;
@@ -194,8 +199,8 @@ export default function CardSpread3D({
         const isFlipped = isCurrentlySelecting &&
           (flipState === 'flipping' || flipState === 'flipped');
 
-        // レイアウト計算
-        const layout = getCardLayout(i, focusIndex, cards.length);
+        // レイアウト計算（連続float）
+        const layout = getCardLayout(i, scrollPos, N);
 
         // シャッフル中は集まるアニメーション
         let position, rotation;
@@ -208,7 +213,7 @@ export default function CardSpread3D({
         }
 
         const opacity = isConfirmed ? 0 : 1;
-        const isFocused = i === focusIndex && !isSelected;
+        const isFocused = i === nearestIndex && !isSelected;
 
         return (
           <group key={card.id}>
