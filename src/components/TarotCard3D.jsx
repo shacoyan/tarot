@@ -7,8 +7,8 @@ const cardWidth = 2.0;
 const cardHeight = 2.9;
 const cardRadius = 0.15;
 
-// 角丸矩形のShapeを生成
-function createRoundedRectShape(w, h, r) {
+// 角丸矩形のShapeGeometryを生成（UV座標を0-1に正規化）
+function createRoundedRectGeometry(w, h, r) {
   const shape = new THREE.Shape();
   const x = -w / 2, y = -h / 2;
   shape.moveTo(x + r, y);
@@ -20,7 +20,15 @@ function createRoundedRectShape(w, h, r) {
   shape.quadraticCurveTo(x, y + h, x, y + h - r);
   shape.lineTo(x, y + r);
   shape.quadraticCurveTo(x, y, x + r, y);
-  return shape;
+
+  const geom = new THREE.ShapeGeometry(shape);
+  // UV座標を [0,1] に正規化（テクスチャが正しくマッピングされるように）
+  const uvAttr = geom.attributes.uv;
+  for (let i = 0; i < uvAttr.count; i++) {
+    uvAttr.setXY(i, (uvAttr.getX(i) + w / 2) / w, (uvAttr.getY(i) + h / 2) / h);
+  }
+  uvAttr.needsUpdate = true;
+  return geom;
 }
 
 export default function TarotCard3D({
@@ -130,7 +138,7 @@ export default function TarotCard3D({
 
   // 角丸ジオメトリ（メモ化）
   const roundedGeom = useMemo(
-    () => new THREE.ShapeGeometry(createRoundedRectShape(cardWidth, cardHeight, cardRadius)),
+    () => createRoundedRectGeometry(cardWidth, cardHeight, cardRadius),
     []
   );
 
