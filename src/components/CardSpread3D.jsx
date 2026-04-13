@@ -12,7 +12,7 @@ const SWIPE_SCALE = 0.035; // px/ms → cards/frame 変換係数
 
 // ── カード配置計算（連続float対応）──────────────────────────────
 function getCardLayout(index, scrollPos, totalCards) {
-  const spacing = 2.8;
+  const spacing = 2.2;
   let offset = index - scrollPos;
   if (offset > totalCards / 2) offset -= totalCards;
   if (offset < -totalCards / 2) offset += totalCards;
