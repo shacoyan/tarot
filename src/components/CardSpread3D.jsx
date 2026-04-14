@@ -59,10 +59,33 @@ export default function CardSpread3D({
     if (isShuffling) {
       setShufflePhase('gather');
       const t1 = setTimeout(() => setShufflePhase('spread'), 500);
-      const t2 = setTimeout(() => setShufflePhase('idle'), 1100);
+      const t2 = setTimeout(() => {
+        setShufflePhase('idle');
+        // シャッフル完了後、最寄りの未選択カードにスナップ
+        const N = cards.length;
+        const current = Math.round(scrollPosRef.current) % N;
+        if (selectedCards.includes(current)) {
+          for (let d = 1; d < N; d++) {
+            const fwd = ((current + d) % N + N) % N;
+            if (!selectedCards.includes(fwd)) {
+              scrollPosRef.current = fwd;
+              scrollVelRef.current = 0;
+              setScrollPos(fwd);
+              break;
+            }
+            const bwd = ((current - d) % N + N) % N;
+            if (!selectedCards.includes(bwd)) {
+              scrollPosRef.current = bwd;
+              scrollVelRef.current = 0;
+              setScrollPos(bwd);
+              break;
+            }
+          }
+        }
+      }, 1100);
       return () => { clearTimeout(t1); clearTimeout(t2); };
     }
-  }, [isShuffling]);
+  }, [isShuffling, cards.length, selectedCards]);
 
   // ── 共通裏面テクスチャ ────────────────────────────────────────────
   const backTexture = useMemo(() => {
